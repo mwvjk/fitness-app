@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="total">Today's total: {{ today_total }} kcal</div>
+
+<form method="post" action="/meals">
+  <label>Date</label>
+  <input type="date" name="log_date" value="{{ today }}" required>
+
+  <label>Food</label>
+  <input type="text" name="food" placeholder="e.g. Chicken & rice" required>
+
+  <label>Calories</label>
+  <input type="number" name="calories" min="0">
+
+  <details>
+    <summary>More details</summary>
+
+    <div class="optional-fields">
+      <label>Protein (g)</label>
+      <input type="number" step="0.1" name="protein_g" min="0">
+
+      <label>Carbs (g)</label>
+      <input type="number" step="0.1" name="carbs_g" min="0">
+
+      <label>Fat (g)</label>
+      <input type="number" step="0.1" name="fat_g" min="0">
+
+      <label>Notes</label>
+      <textarea name="notes" rows="2"></textarea>
+    </div>
+  </details>
+
+  <button type="submit">Add meal</button>
+</form>
+
+<table>
+  <tr><th>Date</th><th>Food</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th></tr>
+  {% for e in entries %}
+  <tr>
+    <td>{{ e.log_date }}</td>
+    <td>{{ e.food }}</td>
+    <td>{{ e.calories or "" }}</td>
+    <td>{{ e.protein_g or "" }}</td>
+    <td>{{ e.carbs_g or "" }}</td>
+    <td>{{ e.fat_g or "" }}</td>
+    <td>
+      <form method="post" action="/meals/{{ e.id }}/delete" style="display:inline; padding:0; border:none; background:none;">
+        <button type="submit" class="del">✕</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
