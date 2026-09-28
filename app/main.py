@@ -5,9 +5,11 @@ from app.database import Base, engine
 from app.routers.workouts import router as workouts_router
 from app.routers.meals import router as meals_router
 
-# Create tables on startup if they don't exist yet.
-# For anything beyond this simple schema, switch to Alembic migrations.
-Base.metadata.create_all(bind=engine)
+# Catch database connection errors gracefully during startup
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Skipping database init: {e}")
 
 app = FastAPI(title="Fitness App")
 
