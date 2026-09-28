@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: fitness-app
-          image: <YOUR_REGISTRY>/fitness-app:latest
+          image: ghcr.io/mwvjk/fitness-app:latest
           ports:
             - containerPort: 8000
           env:
