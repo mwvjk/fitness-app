@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql://fitness-app:fitness-app@localhost:5432/fitness-app"
+    database_url: str = "sqlite:////tmp/fitness.db"
 
     class Config:
         env_file = ".env"
