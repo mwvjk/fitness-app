@@ -75,7 +75,6 @@ def add_workout(
                     "sets": sets,
                     "reps": reps,
                     "weight_kg": weight_kg,
-                    "log_date": log_date,
                     "notes": notes,
                 },
             },

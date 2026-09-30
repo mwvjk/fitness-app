@@ -4,7 +4,7 @@
   {% if error %}<p role="alert">{{ error }}</p>{% endif %}
 
   <label>Date</label>
-  <input type="date" name="log_date" value="{{ form.log_date|default(today) }}" required>
+  <input type="date" name="log_date" value="{{ today }}" data-user-today required>
 
   <label>Exercise</label>
   <input type="text" name="exercise" placeholder="e.g. Bench press" value="{{ form.exercise|default('') }}" required>

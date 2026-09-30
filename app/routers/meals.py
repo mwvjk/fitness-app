@@ -102,7 +102,6 @@ def add_meal(
                     "protein_g": protein_g,
                     "carbs_g": carbs_g,
                     "fat_g": fat_g,
-                    "log_date": log_date,
                     "notes": notes,
                 },
             },
