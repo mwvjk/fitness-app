@@ -112,6 +112,53 @@ def test_meal_and_daily_calorie_logging(app_client):
         assert meal.protein_g == 17
 
 
+@pytest.mark.parametrize(
+    ("protein_g", "carbs_g", "fat_g"),
+    [(1, 0, 0), (0, 1, 0), (0, 0, 1)],
+)
+def test_zero_calories_rejected_when_macro_is_positive(app_client, protein_g, carbs_g, fat_g):
+    client, test_session = app_client
+    response = client.post(
+        "/meals",
+        data={
+            "food": "Test food",
+            "calories": "0",
+            "protein_g": str(protein_g),
+            "carbs_g": str(carbs_g),
+            "fat_g": str(fat_g),
+            "log_date": date.today().isoformat(),
+        },
+    )
+
+    assert response.status_code == 400
+    assert (
+        '<p role="alert">Calories must be greater than 0 when macros are entered.</p>'
+        not in response.text
+    )
+    with test_session() as db:
+        assert db.query(Meal).count() == 0
+
+
+def test_zero_calories_allowed_when_all_macros_are_zero(app_client):
+    client, test_session = app_client
+    response = client.post(
+        "/meals",
+        data={
+            "food": "Water",
+            "calories": "0",
+            "protein_g": "0",
+            "carbs_g": "0",
+            "fat_g": "0",
+            "log_date": date.today().isoformat(),
+        },
+    )
+
+    assert response.status_code == 303
+    with test_session() as db:
+        meal = db.query(Meal).one()
+        assert meal.calories == 0
+
+
 def test_get_db_closes_session(monkeypatch):
     session = Mock()
     monkeypatch.setattr(database, "SessionLocal", lambda: session)

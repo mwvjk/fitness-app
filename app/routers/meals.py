@@ -74,6 +74,10 @@ def add_meal(
         protein_value = parse_required_number(protein_g, "Protein", float)
         carbs_value = parse_required_number(carbs_g, "Carbs", float)
         fat_value = parse_required_number(fat_g, "Fat", float)
+        if calories_value == 0 and any(
+            value > 0 for value in (protein_value, carbs_value, fat_value)
+        ):
+            raise ValueError("Calories must be greater than 0 when macros are entered.")
     except ValueError as error:
         today = date.today()
         entries = (

@@ -3,7 +3,7 @@
 <div class="total">Today's total: {{ today_total }} kcal</div>
 
 <form method="post" action="/meals">
-  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  {% if error and error != "Calories must be greater than 0 when macros are entered." %}<p role="alert">{{ error }}</p>{% endif %}
 
   <label>Date</label>
   <input type="date" name="log_date" value="{{ today }}" data-user-today required>
@@ -47,4 +47,28 @@
   </tr>
   {% endfor %}
 </table>
+<script>
+  const mealForm = document.querySelector('form[action="/meals"]');
+  const caloriesInput = mealForm.elements.calories;
+  const macroInputs = [
+    mealForm.elements.protein_g,
+    mealForm.elements.carbs_g,
+    mealForm.elements.fat_g,
+  ];
+
+  function validateCalories() {
+    const hasPositiveMacros = macroInputs.some((input) => Number(input.value) > 0);
+    const zeroCalories = caloriesInput.value !== "" && Number(caloriesInput.value) === 0;
+    caloriesInput.setCustomValidity(
+      zeroCalories && hasPositiveMacros
+        ? "Calories must be greater than 0 when macros are entered."
+        : ""
+    );
+  }
+
+  [caloriesInput, ...macroInputs].forEach((input) => {
+    input.addEventListener("input", validateCalories);
+  });
+  validateCalories();
+</script>
 {% endblock %}
