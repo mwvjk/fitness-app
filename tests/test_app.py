@@ -3,15 +3,41 @@ from datetime import date
 from unittest.mock import Mock
 
 import pytest
+from alembic import command
+from alembic.config import Config
+from pydantic import ValidationError
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 from sqlalchemy.orm import sessionmaker
 
 os.environ["DATABASE_URL"] = "sqlite://"
 
 from app import database
+from app.config import Settings
 from app.database import Base, get_db, make_engine
 from app.main import app
 from app.models import Meal, Workout
+
+
+def test_database_url_is_required_from_environment(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_alembic_initial_migration_creates_schema(tmp_path):
+    engine = make_engine(f"sqlite:///{tmp_path / 'migration.db'}")
+    config = Config("alembic.ini")
+    with engine.connect() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+    inspector = inspect(engine)
+    assert {"meals", "workouts", "alembic_version"}.issubset(
+        set(inspector.get_table_names())
+    )
+    engine.dispose()
 
 
 @pytest.fixture
@@ -52,7 +78,6 @@ def test_workout_logging(app_client):
     page = client.get("/workouts")
     assert page.status_code == 200
     assert "Squat" in page.text
-
     with test_session() as db:
         workout = db.query(Workout).one()
         assert workout.exercise == "Squat"

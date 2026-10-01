@@ -8,7 +8,7 @@ services:
       - ..:/workspace:cached
     command: sleep infinity
     environment:
-      DATABASE_URL: postgresql://fitness-app:fitness-app@db:5432/fitness-app
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .devcontainer/.env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .devcontainer/.env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .devcontainer/.env}"
     ports:
       - "8000:8000"
     depends_on:
@@ -18,9 +18,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: fitness-app
-      POSTGRES_PASSWORD: fitness-app
-      POSTGRES_DB: fitness-app
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .devcontainer/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .devcontainer/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .devcontainer/.env}
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
