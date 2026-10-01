@@ -18,6 +18,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest
+
       - name: Auto-Bump & Tag Version
         id: tag_version
         uses: anothrNick/github-tag-action@1.71.0
