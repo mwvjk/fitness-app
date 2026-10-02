@@ -86,6 +86,43 @@ def test_workout_logging(app_client):
         assert workout.weight_kg == 60
 
 
+def test_workout_can_be_edited(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        workout = Workout(
+            log_date=date.today(),
+            exercise="Squat",
+            sets=3,
+            reps=8,
+            weight_kg=60,
+        )
+        db.add(workout)
+        db.commit()
+        workout_id = workout.id
+
+    response = client.post(
+        f"/workouts/{workout_id}/edit",
+        data={
+            "exercise": "Front squat",
+            "sets": "4",
+            "reps": "6",
+            "weight_kg": "70",
+            "log_date": "2026-10-01",
+            "notes": "Updated",
+        },
+    )
+
+    assert response.status_code == 303
+    with test_session() as db:
+        workout = db.get(Workout, workout_id)
+        assert workout.exercise == "Front squat"
+        assert workout.sets == 4
+        assert workout.reps == 6
+        assert workout.weight_kg == 70
+        assert workout.log_date == date(2026, 10, 1)
+        assert workout.notes == "Updated"
+
+
 def test_meal_and_daily_calorie_logging(app_client):
     client, test_session = app_client
     response = client.post(
@@ -110,6 +147,83 @@ def test_meal_and_daily_calorie_logging(app_client):
         meal = db.query(Meal).one()
         assert meal.calories == 120
         assert meal.protein_g == 17
+
+
+def test_meal_can_be_edited(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        meal = Meal(
+            log_date=date.today(),
+            food="Skyr",
+            calories=120,
+            protein_g=17,
+            carbs_g=8,
+            fat_g=0.5,
+        )
+        db.add(meal)
+        db.commit()
+        meal_id = meal.id
+
+    response = client.post(
+        f"/meals/{meal_id}/edit",
+        data={
+            "food": "Greek yogurt",
+            "calories": "150",
+            "protein_g": "20",
+            "carbs_g": "10",
+            "fat_g": "1",
+            "log_date": date.today().isoformat(),
+            "notes": "Updated",
+        },
+    )
+
+    assert response.status_code == 303
+    page = client.get("/meals")
+    assert "Today's total: 150 kcal" in page.text
+    with test_session() as db:
+        meal = db.get(Meal, meal_id)
+        assert meal.food == "Greek yogurt"
+        assert meal.calories == 150
+        assert meal.protein_g == 20
+        assert meal.carbs_g == 10
+        assert meal.fat_g == 1
+        assert meal.notes == "Updated"
+
+
+def test_invalid_meal_edit_preserves_entry(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        meal = Meal(
+            log_date=date.today(),
+            food="Skyr",
+            calories=120,
+            protein_g=17,
+            carbs_g=8,
+            fat_g=0.5,
+        )
+        db.add(meal)
+        db.commit()
+        meal_id = meal.id
+
+    response = client.post(
+        f"/meals/{meal_id}/edit",
+        data={
+            "food": "Updated food",
+            "calories": "0",
+            "protein_g": "20",
+            "carbs_g": "10",
+            "fat_g": "1",
+            "log_date": date.today().isoformat(),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Calories must be greater than 0 when macros are entered." in response.text
+    assert 'value="Updated food"' in response.text
+    with test_session() as db:
+        meal = db.get(Meal, meal_id)
+        assert meal.food == "Skyr"
+        assert meal.calories == 120
 
 
 @pytest.mark.parametrize(

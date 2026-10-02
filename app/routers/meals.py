@@ -120,6 +120,86 @@ def add_meal(
     return RedirectResponse(url="/meals", status_code=303)
 
 
+@router.post("/meals/{meal_id}/edit")
+def edit_meal(
+    meal_id: int,
+    request: Request,
+    food: str = Form(""),
+    calories: str = Form(""),
+    protein_g: str = Form(""),
+    carbs_g: str = Form(""),
+    fat_g: str = Form(""),
+    log_date: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    entry = db.get(Meal, meal_id)
+    if entry is None:
+        return HTMLResponse("Meal not found.", status_code=404)
+
+    values = {
+        "food": food,
+        "calories": calories,
+        "protein_g": protein_g,
+        "carbs_g": carbs_g,
+        "fat_g": fat_g,
+        "log_date": log_date,
+        "notes": notes,
+    }
+    try:
+        if not food.strip():
+            raise ValueError("Food is required.")
+        if not log_date.strip():
+            raise ValueError("Date is required.")
+        log_date_value = date.fromisoformat(log_date)
+        calories_value = parse_required_number(calories, "Calories", int)
+        protein_value = parse_required_number(protein_g, "Protein", float)
+        carbs_value = parse_required_number(carbs_g, "Carbs", float)
+        fat_value = parse_required_number(fat_g, "Fat", float)
+        if calories_value == 0 and any(
+            value > 0 for value in (protein_value, carbs_value, fat_value)
+        ):
+            raise ValueError("Calories must be greater than 0 when macros are entered.")
+    except ValueError as error:
+        today = date.today()
+        entries = (
+            db.query(Meal)
+            .order_by(Meal.log_date.desc(), Meal.id.desc())
+            .limit(50)
+            .all()
+        )
+        today_total = (
+            db.query(func.coalesce(func.sum(Meal.calories), 0))
+            .filter(Meal.log_date == today)
+            .scalar()
+        )
+        return templates.TemplateResponse(
+            "meals.html",
+            {
+                "request": request,
+                "entries": entries,
+                "today": today,
+                "today_total": today_total,
+                "active": "meals",
+                "form": {},
+                "edit_entry_id": meal_id,
+                "edit_values": values,
+                "edit_error": str(error),
+            },
+            status_code=400,
+        )
+
+    entry.food = food.strip()
+    entry.calories = calories_value
+    entry.protein_g = protein_value
+    entry.carbs_g = carbs_value
+    entry.fat_g = fat_value
+    entry.log_date = log_date_value
+    entry.notes = notes
+    db.commit()
+    return RedirectResponse(url="/meals", status_code=303)
+
+
 @router.post("/meals/{meal_id}/delete")
 def delete_meal(meal_id: int, db: Session = Depends(get_db)):
     db.query(Meal).filter(Meal.id == meal_id).delete()

@@ -89,6 +89,71 @@ def add_workout(
     return RedirectResponse(url="/workouts", status_code=303)
 
 
+@router.post("/workouts/{workout_id}/edit")
+def edit_workout(
+    workout_id: int,
+    request: Request,
+    exercise: str = Form(""),
+    sets: str = Form(""),
+    reps: str = Form(""),
+    weight_kg: str = Form(""),
+    log_date: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    entry = db.get(Workout, workout_id)
+    if entry is None:
+        return HTMLResponse("Workout not found.", status_code=404)
+
+    values = {
+        "exercise": exercise,
+        "sets": sets,
+        "reps": reps,
+        "weight_kg": weight_kg,
+        "log_date": log_date,
+        "notes": notes,
+    }
+    try:
+        if not exercise.strip():
+            raise ValueError("Exercise is required.")
+        if not log_date.strip():
+            raise ValueError("Date is required.")
+        log_date_value = date.fromisoformat(log_date)
+        sets_value = parse_required_number(sets, "Sets", int)
+        reps_value = parse_required_number(reps, "Reps", int)
+        weight_value = parse_required_number(weight_kg, "Weight", float)
+    except ValueError as error:
+        entries = (
+            db.query(Workout)
+            .order_by(Workout.log_date.desc(), Workout.id.desc())
+            .limit(50)
+            .all()
+        )
+        return templates.TemplateResponse(
+            "workouts.html",
+            {
+                "request": request,
+                "entries": entries,
+                "today": date.today(),
+                "active": "workouts",
+                "form": {},
+                "edit_entry_id": workout_id,
+                "edit_values": values,
+                "edit_error": str(error),
+            },
+            status_code=400,
+        )
+
+    entry.exercise = exercise.strip()
+    entry.sets = sets_value
+    entry.reps = reps_value
+    entry.weight_kg = weight_value
+    entry.log_date = log_date_value
+    entry.notes = notes
+    db.commit()
+    return RedirectResponse(url="/workouts", status_code=303)
+
+
 @router.post("/workouts/{workout_id}/delete")
 def delete_workout(workout_id: int, db: Session = Depends(get_db)):
     db.query(Workout).filter(Workout.id == workout_id).delete()
