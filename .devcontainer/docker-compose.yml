@@ -6,25 +6,31 @@ services:
       dockerfile: .devcontainer/Dockerfile
     volumes:
       - ..:/workspace:cached
-    command: sleep infinity
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .devcontainer/.env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .devcontainer/.env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .devcontainer/.env}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-fitness}:${POSTGRES_PASSWORD:-fitness-dev-password}@db:5432/${POSTGRES_DB:-fitness}"
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .devcontainer/.env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .devcontainer/.env}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .devcontainer/.env}
+      POSTGRES_USER: ${POSTGRES_USER:-fitness}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitness-dev-password}
+      POSTGRES_DB: ${POSTGRES_DB:-fitness}
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   db-data:
