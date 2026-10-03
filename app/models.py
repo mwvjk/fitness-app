@@ -30,3 +30,12 @@ class Meal(Base):
     fat_g = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WaterIntake(Base):
+    __tablename__ = "water_intake"
+
+    id = Column(Integer, primary_key=True)
+    log_date = Column(Date, default=date.today, index=True)
+    amount_ml = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

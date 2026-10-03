@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="post" action="/workouts">
+<form method="post" action="/workouts" class="entry-form">
   {% if error %}<p role="alert">{{ error }}</p>{% endif %}
 
   <label>Date</label>
@@ -24,7 +24,7 @@
   <button type="submit">Add workout</button>
 </form>
 
-<table>
+<table class="workout-table">
   <tr><th>Date</th><th>Exercise</th><th>Sets</th><th>Reps</th><th>kg</th><th></th></tr>
   {% for e in entries %}
   <tr>

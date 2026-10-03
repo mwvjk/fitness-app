@@ -1,52 +1,67 @@
 from datetime import date
 
-from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Meal
+from app.models import Meal, WaterIntake
+from app.validation import parse_required_number
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-def parse_required_number(value: str, label: str, parser):
-    if not value.strip():
-        raise ValueError(f"{label} is required.")
-    try:
-        return parser(value)
-    except ValueError as error:
-        raise ValueError(f"{label} must be a valid number.") from error
+def get_daily_meal_totals(db: Session, log_date: date):
+    calories, protein, carbs, fat = (
+        db.query(
+            func.coalesce(func.sum(Meal.calories), 0),
+            func.coalesce(func.sum(Meal.protein_g), 0),
+            func.coalesce(func.sum(Meal.carbs_g), 0),
+            func.coalesce(func.sum(Meal.fat_g), 0),
+        )
+        .filter(Meal.log_date == log_date)
+        .one()
+    )
+    return {
+        "today_total": calories,
+        "today_protein": round(protein, 1),
+        "today_carbs": round(carbs, 1),
+        "today_fat": round(fat, 1),
+    }
 
 
-@router.get("/meals", response_class=HTMLResponse)
-def list_meals(request: Request, db: Session = Depends(get_db)):
+def render_meals(request: Request, db: Session, status_code: int = 200, **context):
     today = date.today()
-    entries = (
-        db.query(Meal)
-        .order_by(Meal.log_date.desc(), Meal.id.desc())
-        .limit(50)
-        .all()
-    )
-    today_total = (
-        db.query(func.coalesce(func.sum(Meal.calories), 0))
-        .filter(Meal.log_date == today)
-        .scalar()
-    )
     return templates.TemplateResponse(
         "meals.html",
         {
             "request": request,
-            "entries": entries,
             "today": today,
-            "today_total": today_total,
+            **get_daily_meal_totals(db, today),
             "active": "meals",
             "form": {},
+            **context,
         },
+        status_code=status_code,
     )
+
+
+@router.get("/water/total")
+def get_water_total(log_date: date, db: Session = Depends(get_db)):
+    total = (
+        db.query(func.coalesce(func.sum(WaterIntake.amount_ml), 0))
+        .filter(WaterIntake.log_date == log_date)
+        .scalar()
+    )
+    return {"total_ml": total}
+
+
+@router.get("/meals", response_class=HTMLResponse)
+def list_meals(request: Request, db: Session = Depends(get_db)):
+    return render_meals(request, db)
 
 
 @router.post("/meals")
@@ -79,43 +94,83 @@ def add_meal(
         ):
             raise ValueError("Calories must be greater than 0 when macros are entered.")
     except ValueError as error:
-        today = date.today()
-        entries = (
-            db.query(Meal)
-            .order_by(Meal.log_date.desc(), Meal.id.desc())
-            .limit(50)
-            .all()
-        )
-        today_total = (
-            db.query(func.coalesce(func.sum(Meal.calories), 0))
-            .filter(Meal.log_date == today)
-            .scalar()
-        )
-        return templates.TemplateResponse(
-            "meals.html",
-            {
-                "request": request,
-                "entries": entries,
-                "today": today,
-                "today_total": today_total,
-                "active": "meals",
-                "error": str(error),
-                "form": {
-                    "food": food,
-                    "calories": calories,
-                    "protein_g": protein_g,
-                    "carbs_g": carbs_g,
-                    "fat_g": fat_g,
-                    "notes": notes,
-                },
-            },
+        return render_meals(
+            request,
+            db,
             status_code=400,
+            error=str(error),
+            form={
+                "food": food,
+                "calories": calories,
+                "protein_g": protein_g,
+                "carbs_g": carbs_g,
+                "fat_g": fat_g,
+                "notes": notes,
+            },
         )
     entry = Meal(
         food=food.strip(), calories=calories_value, protein_g=protein_value,
         carbs_g=carbs_value, fat_g=fat_value, log_date=log_date_value, notes=notes,
     )
     db.add(entry)
+    db.commit()
+    return RedirectResponse(url="/meals", status_code=303)
+
+
+@router.post("/water")
+def add_water(
+    amount_ml: str = Form(""),
+    log_date: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    try:
+        amount = parse_required_number(amount_ml, "Amount", int)
+        if amount <= 0:
+            raise ValueError("Amount must be greater than 0 ml.")
+        if not log_date.strip():
+            raise ValueError("Date is required.")
+        log_date_value = date.fromisoformat(log_date)
+    except ValueError as error:
+        return PlainTextResponse(str(error), status_code=400)
+
+    db.add(WaterIntake(log_date=log_date_value, amount_ml=amount))
+    db.commit()
+    return RedirectResponse(url="/meals", status_code=303)
+
+
+@router.post("/water/{water_id}/edit")
+def edit_water(
+    water_id: int,
+    amount_ml: str = Form(""),
+    log_date: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    entry = db.get(WaterIntake, water_id)
+    if entry is None:
+        return PlainTextResponse("Water entry not found.", status_code=404)
+    try:
+        amount = parse_required_number(amount_ml, "Amount", int)
+        if amount <= 0:
+            raise ValueError("Amount must be greater than 0 ml.")
+        if log_date is not None:
+            log_date_value = date.fromisoformat(log_date)
+        else:
+            log_date_value = entry.log_date
+    except ValueError as error:
+        return PlainTextResponse(str(error), status_code=400)
+
+    entry.amount_ml = amount
+    entry.log_date = log_date_value
+    db.commit()
+    return RedirectResponse(url="/meals", status_code=303)
+
+
+@router.post("/water/{water_id}/delete")
+def delete_water(water_id: int, db: Session = Depends(get_db)):
+    entry = db.get(WaterIntake, water_id)
+    if entry is None:
+        return PlainTextResponse("Water entry not found.", status_code=404)
+    db.delete(entry)
     db.commit()
     return RedirectResponse(url="/meals", status_code=303)
 
@@ -161,32 +216,13 @@ def edit_meal(
         ):
             raise ValueError("Calories must be greater than 0 when macros are entered.")
     except ValueError as error:
-        today = date.today()
-        entries = (
-            db.query(Meal)
-            .order_by(Meal.log_date.desc(), Meal.id.desc())
-            .limit(50)
-            .all()
-        )
-        today_total = (
-            db.query(func.coalesce(func.sum(Meal.calories), 0))
-            .filter(Meal.log_date == today)
-            .scalar()
-        )
-        return templates.TemplateResponse(
-            "meals.html",
-            {
-                "request": request,
-                "entries": entries,
-                "today": today,
-                "today_total": today_total,
-                "active": "meals",
-                "form": {},
-                "edit_entry_id": meal_id,
-                "edit_values": values,
-                "edit_error": str(error),
-            },
+        return render_meals(
+            request,
+            db,
             status_code=400,
+            edit_entry_id=meal_id,
+            edit_values=values,
+            edit_error=str(error),
         )
 
     entry.food = food.strip()

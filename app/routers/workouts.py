@@ -1,43 +1,45 @@
 from datetime import date
 
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Workout
+from app.validation import parse_required_number
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-def parse_required_number(value: str, label: str, parser):
-    if not value.strip():
-        raise ValueError(f"{label} is required.")
-    try:
-        return parser(value)
-    except ValueError as error:
-        raise ValueError(f"{label} must be a valid number.") from error
-
-
-@router.get("/workouts", response_class=HTMLResponse)
-def list_workouts(request: Request, db: Session = Depends(get_db)):
-    entries = (
+def get_workouts(db: Session):
+    return (
         db.query(Workout)
         .order_by(Workout.log_date.desc(), Workout.id.desc())
         .limit(50)
         .all()
     )
+
+
+def render_workouts(request: Request, db: Session, status_code: int = 200, **context):
     return templates.TemplateResponse(
-        "workouts.html", {
+        "workouts.html",
+        {
             "request": request,
-            "entries": entries,
+            "entries": get_workouts(db),
             "today": date.today(),
             "active": "workouts",
             "form": {},
-        }
+            **context,
+        },
+        status_code=status_code,
     )
+
+
+@router.get("/workouts", response_class=HTMLResponse)
+def list_workouts(request: Request, db: Session = Depends(get_db)):
+    return render_workouts(request, db)
 
 
 @router.post("/workouts")
@@ -56,29 +58,18 @@ def add_workout(
         reps_value = parse_required_number(reps, "Reps", int)
         weight_value = parse_required_number(weight_kg, "Weight", float)
     except ValueError as error:
-        entries = (
-            db.query(Workout)
-            .order_by(Workout.log_date.desc(), Workout.id.desc())
-            .limit(50)
-            .all()
-        )
-        return templates.TemplateResponse(
-            "workouts.html",
-            {
-                "request": request,
-                "entries": entries,
-                "today": date.today(),
-                "active": "workouts",
-                "error": str(error),
-                "form": {
-                    "exercise": exercise,
-                    "sets": sets,
-                    "reps": reps,
-                    "weight_kg": weight_kg,
-                    "notes": notes,
-                },
-            },
+        return render_workouts(
+            request,
+            db,
             status_code=400,
+            error=str(error),
+            form={
+                "exercise": exercise,
+                "sets": sets,
+                "reps": reps,
+                "weight_kg": weight_kg,
+                "notes": notes,
+            },
         )
     entry = Workout(
         exercise=exercise, sets=sets_value, reps=reps_value,
@@ -123,25 +114,13 @@ def edit_workout(
         reps_value = parse_required_number(reps, "Reps", int)
         weight_value = parse_required_number(weight_kg, "Weight", float)
     except ValueError as error:
-        entries = (
-            db.query(Workout)
-            .order_by(Workout.log_date.desc(), Workout.id.desc())
-            .limit(50)
-            .all()
-        )
-        return templates.TemplateResponse(
-            "workouts.html",
-            {
-                "request": request,
-                "entries": entries,
-                "today": date.today(),
-                "active": "workouts",
-                "form": {},
-                "edit_entry_id": workout_id,
-                "edit_values": values,
-                "edit_error": str(error),
-            },
+        return render_workouts(
+            request,
+            db,
             status_code=400,
+            edit_entry_id=workout_id,
+            edit_values=values,
+            edit_error=str(error),
         )
 
     entry.exercise = exercise.strip()

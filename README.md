@@ -1,6 +1,6 @@
 # Fitness App
 
-A small self-hosted app for logging workouts and meals.
+A small self-hosted app for logging workouts, meals, and water.
 
 ## Run with Docker
 

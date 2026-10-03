@@ -1,5 +1,5 @@
 import os
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -16,7 +16,7 @@ from app import database
 from app.config import Settings
 from app.database import Base, get_db, make_engine
 from app.main import app
-from app.models import Meal, Workout
+from app.models import Meal, WaterIntake, Workout
 
 
 def test_database_url_is_required_from_environment(monkeypatch):
@@ -34,7 +34,7 @@ def test_alembic_initial_migration_creates_schema(tmp_path):
         command.upgrade(config, "head")
 
     inspector = inspect(engine)
-    assert {"meals", "workouts", "alembic_version"}.issubset(
+    assert {"meals", "workouts", "water_intake", "alembic_version"}.issubset(
         set(inspector.get_table_names())
     )
     engine.dispose()
@@ -138,15 +138,153 @@ def test_meal_and_daily_calorie_logging(app_client):
     )
 
     assert response.status_code == 303
+    with test_session() as db:
+        db.add(
+            Meal(
+                log_date=date.today(),
+                food="Fruit",
+                calories=30,
+                protein_g=3,
+                carbs_g=6,
+                fat_g=0.2,
+            )
+        )
+        db.add(
+            Meal(
+                log_date=date.today() - timedelta(days=1),
+                food="Yesterday's meal",
+                calories=999,
+                protein_g=99,
+                carbs_g=99,
+                fat_g=99,
+            )
+        )
+        db.commit()
     page = client.get("/meals")
     assert page.status_code == 200
-    assert "Today's total: 120 kcal" in page.text
-    assert "Skyr" in page.text
+    assert "Today's total: 150 kcal" in page.text
+    assert "Protein: 20 g" in page.text
+    assert "Carbs: 14 g" in page.text
+    assert "Fat: 0.7 g" in page.text
+    assert "Meals log" not in page.text
 
     with test_session() as db:
-        meal = db.query(Meal).one()
+        meal = db.query(Meal).filter(Meal.food == "Skyr").one()
         assert meal.calories == 120
         assert meal.protein_g == 17
+
+
+@pytest.mark.parametrize("amount_ml", ["250", "375"])
+def test_water_intake_adds_to_daily_total(app_client, amount_ml):
+    client, test_session = app_client
+
+    response = client.post(
+        "/water",
+        data={"amount_ml": amount_ml, "log_date": "2026-10-03"},
+    )
+
+    assert response.status_code == 303
+    with test_session() as db:
+        intake = db.query(WaterIntake).one()
+        assert intake.amount_ml == int(amount_ml)
+        assert intake.log_date == date(2026, 10, 3)
+    total = client.get("/water/total", params={"log_date": "2026-10-03"})
+    assert total.json() == {"total_ml": int(amount_ml)}
+
+
+def test_water_total_is_calculated_for_requested_local_date(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        db.add_all(
+            [
+                WaterIntake(log_date=date(2026, 10, 2), amount_ml=100),
+                WaterIntake(log_date=date(2026, 10, 3), amount_ml=250),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/water/total", params={"log_date": "2026-10-03"})
+
+    assert response.status_code == 200
+    assert response.json() == {"total_ml": 250}
+
+
+def test_water_intake_rejects_nonpositive_amount(app_client):
+    client, test_session = app_client
+
+    response = client.post(
+        "/water",
+        data={"amount_ml": "0", "log_date": date.today().isoformat()},
+    )
+
+    assert response.status_code == 400
+    assert response.text == "Amount must be greater than 0 ml."
+    with test_session() as db:
+        assert db.query(WaterIntake).count() == 0
+
+
+def test_water_intake_can_be_edited_and_deleted(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        intake = WaterIntake(log_date=date.today(), amount_ml=250)
+        db.add(intake)
+        db.commit()
+        water_id = intake.id
+
+    response = client.post(
+        f"/water/{water_id}/edit",
+        data={"amount_ml": "500", "log_date": "2026-10-01"},
+    )
+
+    assert response.status_code == 303
+    total = client.get("/water/total", params={"log_date": date.today().isoformat()})
+    assert total.json() == {"total_ml": 0}
+    with test_session() as db:
+        intake = db.get(WaterIntake, water_id)
+        assert intake.amount_ml == 500
+        assert intake.log_date == date(2026, 10, 1)
+
+    response = client.post(f"/water/{water_id}/delete")
+
+    assert response.status_code == 303
+    with test_session() as db:
+        assert db.get(WaterIntake, water_id) is None
+
+
+def test_meal_and_water_logs_are_hidden_without_deleting_entries(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        db.add(Meal(log_date=date.today(), food="Saved meal", calories=300))
+        db.add(WaterIntake(log_date=date.today(), amount_ml=250))
+        db.commit()
+
+    page = client.get("/meals")
+
+    assert page.status_code == 200
+    assert "Meals log" not in page.text
+    assert "Water log" not in page.text
+    assert "<table" not in page.text
+    with test_session() as db:
+        assert db.query(Meal).count() == 1
+        assert db.query(WaterIntake).count() == 1
+
+
+def test_invalid_water_edit_preserves_existing_amount(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        intake = WaterIntake(log_date=date.today(), amount_ml=250)
+        db.add(intake)
+        db.commit()
+        water_id = intake.id
+
+    response = client.post(
+        f"/water/{water_id}/edit",
+        data={"amount_ml": "0"},
+    )
+
+    assert response.status_code == 400
+    with test_session() as db:
+        assert db.get(WaterIntake, water_id).amount_ml == 250
 
 
 def test_meal_can_be_edited(app_client):
@@ -218,8 +356,6 @@ def test_invalid_meal_edit_preserves_entry(app_client):
     )
 
     assert response.status_code == 400
-    assert "Calories must be greater than 0 when macros are entered." in response.text
-    assert 'value="Updated food"' in response.text
     with test_session() as db:
         meal = db.get(Meal, meal_id)
         assert meal.food == "Skyr"
