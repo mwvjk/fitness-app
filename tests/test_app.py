@@ -209,6 +209,66 @@ def test_water_total_is_calculated_for_requested_local_date(app_client):
     assert response.json() == {"total_ml": 250}
 
 
+def test_water_total_can_be_set_without_changing_other_dates(app_client):
+    client, test_session = app_client
+    with test_session() as db:
+        db.add_all(
+            [
+                WaterIntake(log_date=date(2026, 10, 3), amount_ml=100),
+                WaterIntake(log_date=date(2026, 10, 3), amount_ml=250),
+                WaterIntake(log_date=date(2026, 10, 2), amount_ml=75),
+            ]
+        )
+        db.commit()
+
+    response = client.post(
+        "/water/total",
+        data={"total_ml": "200", "log_date": "2026-10-03"},
+    )
+
+    assert response.status_code == 303
+    assert client.get("/water/total", params={"log_date": "2026-10-03"}).json() == {
+        "total_ml": 200
+    }
+    assert client.get("/water/total", params={"log_date": "2026-10-02"}).json() == {
+        "total_ml": 75
+    }
+    with test_session() as db:
+        assert db.query(WaterIntake).count() == 3
+
+
+def test_water_total_can_be_set_when_no_entries_exist(app_client):
+    client, test_session = app_client
+
+    response = client.post(
+        "/water/total",
+        data={"total_ml": "500", "log_date": "2026-10-03"},
+    )
+
+    assert response.status_code == 303
+    assert client.get("/water/total", params={"log_date": "2026-10-03"}).json() == {
+        "total_ml": 500
+    }
+    with test_session() as db:
+        entry = db.query(WaterIntake).one()
+        assert entry.amount_ml == 500
+        assert entry.log_date == date(2026, 10, 3)
+
+
+@pytest.mark.parametrize("total_ml", ["-1", "not a number", ""])
+def test_water_total_rejects_invalid_values(app_client, total_ml):
+    client, test_session = app_client
+
+    response = client.post(
+        "/water/total",
+        data={"total_ml": total_ml, "log_date": "2026-10-03"},
+    )
+
+    assert response.status_code == 400
+    with test_session() as db:
+        assert db.query(WaterIntake).count() == 0
+
+
 def test_water_intake_rejects_nonpositive_amount(app_client):
     client, test_session = app_client
 

@@ -35,7 +35,22 @@
 </form>
 
 <section class="water-intake" aria-label="Water intake">
-  <p class="water-total"><strong>Water</strong> · Today: <span id="water-total">…</span> ml</p>
+  <div class="water-total">
+    <p><strong>Water</strong> · Today: <span id="water-total">0</span> ml
+      <button type="button" id="edit-water-total">Edit</button>
+    </p>
+  </div>
+  <dialog id="water-total-dialog" class="water-total-dialog">
+    <form method="post" action="/water/total">
+      <input type="hidden" name="log_date" data-user-date>
+      <label for="water-total-input">Today's water total (ml)</label>
+      <input id="water-total-input" type="number" name="total_ml" min="0" step="1" value="0" required>
+      <div class="water-total-actions">
+        <button type="button" id="cancel-water-total">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
   <div class="water-controls">
     <form method="post" action="/water" class="water-quick">
       <input type="hidden" name="log_date" data-user-date>
@@ -68,6 +83,16 @@
     .then((data) => {
       document.getElementById("water-total").textContent = data.total_ml;
     });
+
+  const waterTotalDialog = document.getElementById("water-total-dialog");
+  document.getElementById("edit-water-total").addEventListener("click", () => {
+    document.getElementById("water-total-input").value =
+      document.getElementById("water-total").textContent;
+    waterTotalDialog.showModal();
+  });
+  document.getElementById("cancel-water-total").addEventListener("click", () => {
+    waterTotalDialog.close();
+  });
 
   document.querySelectorAll('form[action^="/meals"]').forEach((form) => {
     const caloriesInput = form.elements.calories;

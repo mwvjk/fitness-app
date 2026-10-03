@@ -22,7 +22,13 @@
   .water-quick { flex: 0 0 auto; justify-content: center; }
   .water-custom { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .water-custom label { grid-column: 1 / -1; }
-  .water-total { margin: 8px 0; }
+  .water-total { margin: 8px 0; padding: 0; border: 0; background: none; }
+  .water-total p { display: flex; align-items: center; gap: 4px; margin: 0; }
+  .water-total button { padding: 4px 8px; font-size: 0.85em; }
+  .water-total-dialog { width: min(calc(100% - 32px), 360px); border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  .water-total-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+  .water-total-dialog form { margin: 0; padding: 0; border: 0; }
+  .water-total-actions { display: flex; justify-content: flex-end; gap: 8px; }
   summary { cursor: pointer; }
   table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
   .workout-table { max-width: 560px; }

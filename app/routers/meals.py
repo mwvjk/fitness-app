@@ -59,6 +59,47 @@ def get_water_total(log_date: date, db: Session = Depends(get_db)):
     return {"total_ml": total}
 
 
+@router.post("/water/total")
+def set_water_total(
+    total_ml: str = Form(""),
+    log_date: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    try:
+        total = parse_required_number(total_ml, "Total", int)
+        if total < 0:
+            raise ValueError("Total must be 0 ml or greater.")
+        if not log_date.strip():
+            raise ValueError("Date is required.")
+        total_date = date.fromisoformat(log_date)
+    except ValueError as error:
+        return PlainTextResponse(str(error), status_code=400)
+
+    entries = (
+        db.query(WaterIntake)
+        .filter(WaterIntake.log_date == total_date)
+        .order_by(WaterIntake.id.desc())
+        .all()
+    )
+    difference = total - sum(entry.amount_ml for entry in entries)
+    if difference > 0:
+        if entries:
+            entries[0].amount_ml += difference
+        else:
+            db.add(WaterIntake(log_date=total_date, amount_ml=total))
+    elif difference < 0:
+        remaining = -difference
+        for entry in entries:
+            reduction = min(entry.amount_ml, remaining)
+            entry.amount_ml -= reduction
+            remaining -= reduction
+            if not remaining:
+                break
+
+    db.commit()
+    return RedirectResponse(url="/meals", status_code=303)
+
+
 @router.get("/meals", response_class=HTMLResponse)
 def list_meals(request: Request, db: Session = Depends(get_db)):
     return render_meals(request, db)
